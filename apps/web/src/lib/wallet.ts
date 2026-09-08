@@ -76,6 +76,16 @@ export async function sendTransaction(tx: {
   return txHash;
 }
 
+export async function getConnectedChainId(): Promise<number | null> {
+  if (typeof window === "undefined" || !window.ethereum) return null;
+  try {
+    const chainIdHex = (await window.ethereum.request({ method: "eth_chainId" })) as string;
+    return chainIdHex ? parseInt(chainIdHex, 16) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function onAccountsChanged(handler: (accounts: string[]) => void): () => void {
   if (typeof window === "undefined" || !window.ethereum?.on) {
     return () => {};
@@ -83,4 +93,22 @@ export function onAccountsChanged(handler: (accounts: string[]) => void): () => 
   const listener = (...args: unknown[]) => handler(args[0] as string[]);
   window.ethereum.on("accountsChanged", listener);
   return () => window.ethereum?.removeListener?.("accountsChanged", listener);
+}
+
+export function onChainChanged(handler: (chainId: string) => void): () => void {
+  if (typeof window === "undefined" || !window.ethereum?.on) {
+    return () => {};
+  }
+  const listener = (...args: unknown[]) => handler(args[0] as string);
+  window.ethereum.on("chainChanged", listener);
+  return () => window.ethereum?.removeListener?.("chainChanged", listener);
+}
+
+export function onDisconnect(handler: () => void): () => void {
+  if (typeof window === "undefined" || !window.ethereum?.on) {
+    return () => {};
+  }
+  const listener = () => handler();
+  window.ethereum.on("disconnect", listener);
+  return () => window.ethereum?.removeListener?.("disconnect", listener);
 }

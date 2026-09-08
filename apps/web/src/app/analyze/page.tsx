@@ -1,12 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { DecisionBadge, RiskBadge, StatusBadge } from "@/components/ui/Badge";
 import { analyzeTransaction, TxLensApiError } from "@/lib/api";
-import { connectWallet, getConnectedAddress, sendTransaction } from "@/lib/wallet";
+import {
+  connectWallet,
+  getConnectedAddress,
+  onAccountsChanged,
+  onChainChanged,
+  sendTransaction,
+} from "@/lib/wallet";
 import type { TransactionAnalyzeResponse } from "@txlens/shared-types";
+
+interface AnalyzedTxPayload {
+  chain: string;
+  from: string;
+  to: string | null;
+  value: string;
+  data: string | null;
+}
 
 const EMPTY_FORM = { chain: "base-sepolia", to: "", value: "0", data: "" };
 
@@ -15,24 +29,62 @@ export default function AnalyzePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TransactionAnalyzeResponse | null>(null);
+  const [analyzedTx, setAnalyzedTx] = useState<AnalyzedTxPayload | null>(null);
   const [signStatus, setSignStatus] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
+
+  useEffect(() => {
+    const unsubAccounts = onAccountsChanged(() => {
+      setResult(null);
+      setAnalyzedTx(null);
+      setIsStale(false);
+      setSignStatus("Account changed. Please re-analyze.");
+    });
+    const unsubChain = onChainChanged(() => {
+      setResult(null);
+      setAnalyzedTx(null);
+      setIsStale(false);
+      setSignStatus("Network changed. Please re-analyze.");
+    });
+    return () => {
+      unsubAccounts();
+      unsubChain();
+    };
+  }, []);
+
+  const handleFormChange = (updated: typeof EMPTY_FORM) => {
+    setForm(updated);
+    if (analyzedTx) {
+      const changed =
+        updated.chain !== analyzedTx.chain ||
+        (updated.to || null) !== analyzedTx.to ||
+        (updated.value || "0") !== analyzedTx.value ||
+        (updated.data || null) !== analyzedTx.data;
+      setIsStale(changed);
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
     setResult(null);
+    setAnalyzedTx(null);
+    setIsStale(false);
     setSignStatus(null);
     setLoading(true);
     try {
       const from = (await getConnectedAddress()) ?? (await connectWallet());
-      const analysis = await analyzeTransaction({
+      const txPayload: AnalyzedTxPayload = {
         chain: form.chain,
         from,
         to: form.to || null,
         value: form.value || "0",
         data: form.data || null,
-      });
+      };
+      const analysis = await analyzeTransaction(txPayload);
       setResult(analysis);
+      setAnalyzedTx(txPayload);
+      setIsStale(false);
     } catch (err) {
       setError(err instanceof TxLensApiError ? err.message : "Analysis failed. Is the backend running?");
     } finally {
@@ -41,14 +93,27 @@ export default function AnalyzePage() {
   };
 
   const handleContinue = async () => {
+    if (!analyzedTx) {
+      setSignStatus("Error: No valid analyzed transaction.");
+      return;
+    }
+    if (isStale) {
+      setSignStatus("Error: Form has changed since analysis. Please re-analyze before signing.");
+      return;
+    }
     setSignStatus(null);
     try {
-      const from = (await getConnectedAddress()) ?? (await connectWallet());
+      const currentFrom = (await getConnectedAddress()) ?? (await connectWallet());
+      if (currentFrom.toLowerCase() !== analyzedTx.from.toLowerCase()) {
+        setSignStatus("Connected wallet address changed. Please re-analyze.");
+        return;
+      }
+      // Exact analyzed transaction is sent to wallet, preventing TOCTOU substitution
       const hash = await sendTransaction({
-        from,
-        to: form.to || undefined,
-        value: form.value || "0",
-        data: form.data || undefined,
+        from: analyzedTx.from,
+        to: analyzedTx.to || undefined,
+        value: analyzedTx.value,
+        data: analyzedTx.data || undefined,
       });
       setSignStatus(`Submitted: ${hash}`);
     } catch (err) {
@@ -72,7 +137,7 @@ export default function AnalyzePage() {
             <input
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-ink"
               value={form.chain}
-              onChange={(e) => setForm({ ...form, chain: e.target.value })}
+              onChange={(e) => handleFormChange({ ...form, chain: e.target.value })}
             />
           </label>
           <label className="block text-sm">
@@ -81,7 +146,7 @@ export default function AnalyzePage() {
               className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
               placeholder="0x…"
               value={form.to}
-              onChange={(e) => setForm({ ...form, to: e.target.value })}
+              onChange={(e) => handleFormChange({ ...form, to: e.target.value })}
             />
           </label>
           <label className="block text-sm">
@@ -89,7 +154,7 @@ export default function AnalyzePage() {
             <input
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-ink"
               value={form.value}
-              onChange={(e) => setForm({ ...form, value: e.target.value })}
+              onChange={(e) => handleFormChange({ ...form, value: e.target.value })}
             />
           </label>
           <label className="block text-sm">
@@ -98,7 +163,7 @@ export default function AnalyzePage() {
               className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
               placeholder="0x…"
               value={form.data}
-              onChange={(e) => setForm({ ...form, data: e.target.value })}
+              onChange={(e) => handleFormChange({ ...form, data: e.target.value })}
             />
           </label>
           <div className="md:col-span-2">
@@ -117,6 +182,14 @@ export default function AnalyzePage() {
 
       {result && (
         <div className="space-y-6">
+          {isStale && (
+            <Card className="border-warning/60 bg-warning/10">
+              <p className="text-sm font-medium text-warning">
+                Warning: Form inputs have been modified since this analysis was generated.
+                Please re-analyze the transaction before signing.
+              </p>
+            </Card>
+          )}
           <Card>
             <CardHeader title="Risk" />
             {result.risk ? (
@@ -257,11 +330,22 @@ export default function AnalyzePage() {
             </div>
           </Card>
 
+          {analyzedTx && (
+            <Card className="border-border bg-surface-muted/50 p-3">
+              <p className="text-xs text-ink-muted">
+                <span className="font-semibold text-ink">Signing payload verification:</span> To:{" "}
+                <span className="font-mono text-ink">{analyzedTx.to ?? "(Contract creation)"}</span> | Value:{" "}
+                <span className="font-mono text-ink">{analyzedTx.value} wei</span> | Chain:{" "}
+                <span className="font-mono text-ink">{analyzedTx.chain}</span>
+              </p>
+            </Card>
+          )}
+
           <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={() => setResult(null)}>
+            <Button variant="secondary" onClick={() => { setResult(null); setAnalyzedTx(null); setIsStale(false); }}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleContinue}>
+            <Button variant="primary" onClick={handleContinue} disabled={isStale}>
               Continue — sign in wallet
             </Button>
             {signStatus && <span className="text-sm text-ink-muted">{signStatus}</span>}

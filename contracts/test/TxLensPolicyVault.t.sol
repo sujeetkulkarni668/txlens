@@ -331,4 +331,48 @@ contract TxLensPolicyVaultTest is Test {
         assertEq(vault.balances(alice), 1 ether);
         assertEq(recipient.balance, 1 ether);
     }
+
+    // ── Fuzz tests & Invariants ──────────────────────────────────────
+
+    function testFuzz_deposit_and_withdraw(uint256 depositAmt, uint256 withdrawAmt) public {
+        vm.assume(depositAmt > 0 && depositAmt <= 100 ether);
+        vm.assume(withdrawAmt > 0 && withdrawAmt <= depositAmt);
+
+        vm.startPrank(alice);
+        vault.deposit{value: depositAmt}();
+        assertEq(vault.balances(alice), depositAmt);
+
+        vault.withdraw(withdrawAmt);
+        assertEq(vault.balances(alice), depositAmt - withdrawAmt);
+        vm.stopPrank();
+    }
+
+    function testFuzz_maxTransactionAmount_enforcement(uint256 maxAmount, uint256 spendAmount) public {
+        vm.assume(maxAmount > 0 && maxAmount <= 50 ether);
+        vm.assume(spendAmount > 0 && spendAmount <= 50 ether);
+
+        vm.startPrank(alice);
+        vault.deposit{value: 50 ether}();
+        vault.setPolicy(maxAmount, 0, false, false);
+
+        if (spendAmount > maxAmount) {
+            vm.expectRevert("TxLensPolicyVault: exceeds max transaction amount");
+            vault.executeAction(recipient, spendAmount, "");
+        } else {
+            vault.executeAction(recipient, spendAmount, "");
+            assertEq(vault.balances(alice), 50 ether - spendAmount);
+        }
+        vm.stopPrank();
+    }
+
+    function test_invariant_vault_eth_balance_matches_accounting() public {
+        vm.prank(alice);
+        vault.deposit{value: 10 ether}();
+
+        vm.prank(bob);
+        vault.deposit{value: 20 ether}();
+
+        assertEq(address(vault).balance, vault.balances(alice) + vault.balances(bob));
+        assertEq(address(vault).balance, 30 ether);
+    }
 }

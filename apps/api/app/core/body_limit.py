@@ -27,11 +27,20 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
         content_length = request.headers.get("content-length")
         if content_length is not None:
             try:
-                if int(content_length) > self._max_bytes:
+                cl = int(content_length)
+                if cl < 0:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"message": "invalid content-length header: must be non-negative"},
+                    )
+                if cl > self._max_bytes:
                     return JSONResponse(
                         status_code=413,
                         content={"message": f"request body exceeds {self._max_bytes} byte limit"},
                     )
             except ValueError:
-                pass  # malformed header — let the framework's own parsing reject it
+                return JSONResponse(
+                    status_code=400,
+                    content={"message": "invalid content-length header"},
+                )
         return await call_next(request)

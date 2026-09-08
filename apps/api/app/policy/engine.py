@@ -66,7 +66,8 @@ class PolicyEngine:
         if value is None:
             return None
         try:
-            return float(value)
+            val = float(value)
+            return val if val >= 0 else None
         except (TypeError, ValueError):
             return None
 

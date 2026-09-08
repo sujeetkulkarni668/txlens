@@ -58,10 +58,10 @@ confidence in your own writing.
 
 def _wrap_untrusted(value: str) -> str:
     """Delimits a single untrusted string. The delimiter itself is fixed
-    and not something evidence content can spoof its way out of, since we
-    control the surrounding structure — the model is instructed (system
-    prompt rule 2) to treat everything between these tags as inert data."""
-    return f"<untrusted_onchain_data>{value}</untrusted_onchain_data>"
+    and stripped of any nested closing tags — the model is instructed
+    (system prompt rule 2) to treat everything between these tags as inert data."""
+    sanitized = str(value).replace("</untrusted_onchain_data>", "").replace("<untrusted_onchain_data>", "")
+    return f"<untrusted_onchain_data>{sanitized}</untrusted_onchain_data>"
 
 
 def _render_optional_section(name: str, data: dict | None, untrusted_keys: tuple[str, ...] = ()) -> str:

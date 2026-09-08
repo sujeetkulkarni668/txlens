@@ -1,0 +1,96 @@
+﻿name: TxLens Production CI & Security Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-test:
+    name: Python Suite & Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio scikit-learn joblib scipy pydantic pydantic-settings structlog fastapi starlette slowapi sqlalchemy alembic asyncpg redis
+
+      - name: Run Python Tests
+        run: |
+          pytest -v
+
+  frontend-build:
+    name: Frontend Quality & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Clean Install Dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint:web
+
+      - name: Run TypeScript Typecheck
+        run: npm run typecheck:web
+
+      - name: Build Next.js Application
+        run: npm run build:web
+
+  solidity-contracts:
+    name: Foundry Solidity Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Run Forge Build & Tests
+        working-directory: contracts
+        run: |
+          forge install foundry-rs/forge-std --no-commit || true
+          forge build --sizes
+          forge test -vvv
+
+  docker-compose-validate:
+    name: Docker Infrastructure Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup environment file
+        run: cp .env.example .env
+
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+
+      - name: Build Docker Stack
+        run: docker compose build

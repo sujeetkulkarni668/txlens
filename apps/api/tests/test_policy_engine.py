@@ -53,6 +53,13 @@ class TestMaximumTransactionValue(unittest.TestCase):
         self.assertEqual(len(result.unevaluated_rules), 1)
         self.assertIn("misconfigured", result.unevaluated_rules[0].reason)
 
+    def test_negative_parameter_is_treated_as_misconfigured(self):
+        bad_policy = PolicyRule(name="negative", rule_type=RuleType.MAXIMUM_TRANSACTION_VALUE, parameters={"max_value": -5.0})
+        result = self.engine.evaluate([bad_policy], ctx(transaction_value_native=1000))
+        self.assertEqual(result.decision, PolicyDecision.ALLOW)
+        self.assertEqual(len(result.unevaluated_rules), 1)
+        self.assertIn("misconfigured", result.unevaluated_rules[0].reason)
+
     def test_inactive_policy_is_skipped_entirely(self):
         inactive = PolicyRule(
             name="cap", rule_type=RuleType.MAXIMUM_TRANSACTION_VALUE,

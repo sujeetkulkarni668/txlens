@@ -55,6 +55,14 @@ class Settings(BaseSettings):
                 "every access token; anyone who knows it can forge a valid login for any "
                 "user. Set a real random value in .env."
             )
+        elif self.is_production and len(self.api_secret_key) < 32:
+            problems.append(
+                "API_SECRET_KEY has insufficient entropy for production (must be at least 32 characters)."
+            )
+        if self.is_production and "*" in self.cors_origins_list:
+            problems.append(
+                "API_CORS_ORIGINS contains wildcard '*' in production — explicit trusted domains required."
+            )
         return problems
 
 
