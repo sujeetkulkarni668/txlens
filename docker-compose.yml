@@ -65,6 +65,8 @@ services:
       # No /api/v1 suffix here — mcp_server/client.py already prefixes
       # every request path with /api/v1 itself.
       TXLENS_API_URL: http://api:8000
+    stdin_open: true
+    tty: true
     ports:
       - "8765:8765"
     depends_on:
