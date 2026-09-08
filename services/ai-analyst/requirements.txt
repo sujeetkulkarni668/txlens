@@ -1,0 +1,4 @@
+# Not installed/verified in this environment (no network access in the
+# build sandbox). Anthropic is the only currently-implemented provider —
+# see ai_analyst/factory.py to add another.
+anthropic==0.39.0

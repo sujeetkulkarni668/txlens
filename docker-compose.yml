@@ -1,0 +1,88 @@
+# TxLens local development stack.
+# NOTE: Not yet run/verified in this environment (no Docker available in the
+# build sandbox). Validate locally with `docker compose config` and
+# `docker compose up --build` once dependency files exist for each service
+# (added in later phases). Phase 1 provides the compose topology + Dockerfiles
+# as scaffolding.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: txlens-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-txlens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-txlens}
+      POSTGRES_DB: ${POSTGRES_DB:-txlens}
+    ports:
+      - "5432:5432"
+    volumes:
+      - txlens_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-txlens}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: txlens-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: txlens-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mcp-server:
+    build:
+      context: ./services/mcp-server
+      dockerfile: ../../docker/mcp-server.Dockerfile
+    container_name: txlens-mcp-server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # No /api/v1 suffix here — mcp_server/client.py already prefixes
+      # every request path with /api/v1 itself.
+      TXLENS_API_URL: http://api:8000
+    ports:
+      - "8765:8765"
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    container_name: txlens-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  txlens_postgres_data:

@@ -1,0 +1,17 @@
+[project]
+name = "txlens-api"
+version = "0.1.0"
+description = "TxLens backend API — orchestrates parsing, simulation, ML risk, policy, and AI investigation."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

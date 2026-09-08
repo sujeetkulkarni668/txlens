@@ -1,0 +1,6 @@
+# Not installed/verified in this environment (no network access in the
+# build sandbox). The tool-handler logic (tools.py, client.py,
+# authorization.py, audit.py) has zero dependencies beyond the stdlib and
+# is fully tested without this package — only server.py (the MCP
+# protocol transport layer) needs it.
+mcp==1.1.2

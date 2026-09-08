@@ -1,0 +1,5 @@
+# Pinned to what was actually used to train/test the model in this
+# environment (see ml/training/train.py output).
+scikit-learn==1.8.0
+joblib==1.5.3
+numpy==2.4.4

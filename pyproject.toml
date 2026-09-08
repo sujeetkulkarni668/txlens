@@ -1,0 +1,39 @@
+[tool.pytest.ini_options]
+# Fixes a real collection collision: apps/api/tests, services/*/tests all
+# have __init__.py, so pytest's default "prepend" import mode resolves
+# every one of them to the same top-level module name `tests` — the
+# second one collected fails with "import file mismatch" because the
+# cached `tests` module's __file__ doesn't match the file being collected.
+# --import-mode=importlib derives each test module's identity from its
+# full resolved path instead of a bare package name, so this can't happen
+# regardless of how many same-named `tests` packages exist across the repo.
+#
+# `pythonpath` (native pytest config since 7.0, no plugin needed) also
+# replaces the manual `PYTHONPATH=...` prefix every command in this repo's
+# README has required until now — pytest adds these to sys.path itself.
+#
+# NOT VERIFIED — ENVIRONMENT LIMITATION: pytest is not installed in the
+# environment that generated this repo (no network to install it), so
+# `python -m pytest -q` itself has never been run, here or at any earlier
+# point in this project. This configuration is the standard, documented
+# fix for this exact scenario; it has not been executed to confirm it
+# resolves the collision as designed. `python -m unittest discover -s
+# <dir>`, run individually per package (see README "Testing"), remains
+# the one test-execution path actually verified in this environment, and
+# continues to work unchanged — this file doesn't affect it.
+minversion = "7.0"
+addopts = "--import-mode=importlib"
+testpaths = [
+    "apps/api/tests",
+    "services/risk-engine/tests",
+    "services/ai-analyst/tests",
+    "services/mcp-server/tests",
+    "tests/integration",
+]
+pythonpath = [
+    ".",
+    "apps/api",
+    "services/risk-engine",
+    "services/ai-analyst",
+    "services/mcp-server",
+]
