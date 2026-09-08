@@ -97,5 +97,44 @@ class TestAIAnalystServiceProviderFailure(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.recommendation, "REVIEW")
 
 
+class TestAIProviderFactory(unittest.TestCase):
+    def test_gemini_provider_instantiates(self):
+        from ai_analyst.factory import get_ai_provider
+        from ai_analyst.providers.gemini_provider import GeminiProvider
+
+        provider = get_ai_provider(provider_name="gemini", api_key="fake-key", model="gemini-1.5-flash")
+        self.assertIsInstance(provider, GeminiProvider)
+
+    def test_groq_provider_instantiates(self):
+        from ai_analyst.factory import get_ai_provider
+        from ai_analyst.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+        provider = get_ai_provider(provider_name="groq", api_key="fake-key", model="llama-3.3-70b-versatile")
+        self.assertIsInstance(provider, OpenAICompatibleProvider)
+        self.assertEqual(provider._base_url, "https://api.groq.com/openai/v1/chat/completions")
+
+    def test_openrouter_provider_instantiates(self):
+        from ai_analyst.factory import get_ai_provider
+        from ai_analyst.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+        provider = get_ai_provider(provider_name="openrouter", api_key="fake-key", model="google/gemini-2.0-flash-exp:free")
+        self.assertIsInstance(provider, OpenAICompatibleProvider)
+        self.assertEqual(provider._base_url, "https://openrouter.ai/api/v1/chat/completions")
+
+    def test_openai_provider_instantiates(self):
+        from ai_analyst.factory import get_ai_provider
+        from ai_analyst.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+        provider = get_ai_provider(provider_name="openai", api_key="fake-key", model="gpt-4o-mini")
+        self.assertIsInstance(provider, OpenAICompatibleProvider)
+
+    def test_unsupported_provider_raises(self):
+        from ai_analyst.factory import get_ai_provider
+
+        with self.assertRaises(ValueError):
+            get_ai_provider(provider_name="unknown_vendor", api_key="fake-key", model="test")
+
+
 if __name__ == "__main__":
     unittest.main()
+
