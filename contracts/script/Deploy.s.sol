@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-// NOT RUN in the environment that generated this file — no forge available.
-// Validate with: forge script script/Deploy.s.sol --rpc-url $EVM_RPC_URL --broadcast
+/// @notice Deployment script for TxLensPolicyVault across EVM networks (Base Sepolia, Base Mainnet, Ethereum Mainnet).
+/// Usage:
+///   forge script script/Deploy.s.sol --rpc-url <rpc_alias_or_url> --broadcast --verify
 
-import {Script, console} from "forge-std/Script.sol";
+import {Script, console2} from "forge-std/Script.sol";
 import {TxLensPolicyVault} from "../src/TxLensPolicyVault.sol";
 
 contract DeployTxLensPolicyVault is Script {
     function run() external returns (TxLensPolicyVault vault) {
-        uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        uint256 deployerKey = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
+        
+        console2.log("Deploying TxLensPolicyVault on chain ID:", block.chainid);
 
-        vm.startBroadcast(deployerKey);
+        if (deployerKey != 0) {
+            vm.startBroadcast(deployerKey);
+        } else {
+            vm.startBroadcast();
+        }
+
         vault = new TxLensPolicyVault();
+
         vm.stopBroadcast();
 
-        console.log("TxLensPolicyVault deployed at:", address(vault));
+        console2.log("--------------------------------------------------");
+        console2.log("TxLensPolicyVault successfully deployed at:", address(vault));
+        console2.log("--------------------------------------------------");
     }
 }

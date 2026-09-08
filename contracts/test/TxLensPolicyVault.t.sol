@@ -11,6 +11,7 @@ import {Test} from "forge-std/Test.sol";
 import {TxLensPolicyVault} from "../src/TxLensPolicyVault.sol";
 import {
     ReentrantWithdrawAttacker,
+    ReentrantExecuteAttacker,
     AlwaysRevertingTarget,
     SimpleCounterTarget
 } from "./mocks/TestHelpers.sol";
@@ -374,5 +375,80 @@ contract TxLensPolicyVaultTest is Test {
 
         assertEq(address(vault).balance, vault.balances(alice) + vault.balances(bob));
         assertEq(address(vault).balance, 30 ether);
+    }
+
+    function test_reentrant_executeAction_is_blocked() public {
+        ReentrantExecuteAttacker attacker = new ReentrantExecuteAttacker(vault);
+        vm.deal(address(attacker), 1 ether);
+
+        attacker.deposit{value: 1 ether}();
+        attacker.attack();
+
+        assertTrue(attacker.reentrancyReverted(), "Reentrant executeAction must revert");
+    }
+
+    function test_withdraw_zero_reverts() public {
+        vm.startPrank(alice);
+        vault.deposit{value: 1 ether}();
+        vm.expectRevert("TxLensPolicyVault: amount must be > 0");
+        vault.withdraw(0);
+        vm.stopPrank();
+    }
+
+    function testFuzz_multiUser_isolation(uint256 aliceDeposit, uint256 bobDeposit) public {
+        vm.assume(aliceDeposit > 0 && aliceDeposit <= 50 ether);
+        vm.assume(bobDeposit > 0 && bobDeposit <= 50 ether);
+
+        vm.deal(alice, aliceDeposit);
+        vm.deal(bob, bobDeposit);
+
+        vm.prank(alice);
+        vault.deposit{value: aliceDeposit}();
+
+        vm.prank(bob);
+        vault.deposit{value: bobDeposit}();
+
+        assertEq(vault.balances(alice), aliceDeposit);
+        assertEq(vault.balances(bob), bobDeposit);
+        assertEq(address(vault).balance, aliceDeposit + bobDeposit);
+
+        vm.prank(alice);
+        vault.withdraw(aliceDeposit);
+
+        assertEq(vault.balances(alice), 0);
+        assertEq(vault.balances(bob), bobDeposit);
+        assertEq(address(vault).balance, bobDeposit);
+    }
+
+    function testFuzz_dailySpendWindow(uint256 limit, uint256 spend1, uint256 spend2, uint32 timeJump) public {
+        vm.assume(limit >= 1 ether && limit <= 50 ether);
+        vm.assume(spend1 > 0 && spend1 <= limit);
+        vm.assume(spend2 > 0 && spend2 <= limit);
+
+        vm.deal(alice, limit * 2);
+        vm.startPrank(alice);
+        vault.deposit{value: limit * 2}();
+        vault.setPolicy(0, limit, false, false);
+
+        vault.executeAction(recipient, spend1, "");
+        assertEq(vault.dailySpent(alice), spend1);
+
+        if (timeJump >= 1 days) {
+            vm.warp(block.timestamp + timeJump);
+            // Window has reset
+            assertEq(vault.getEffectiveDailySpent(alice), 0);
+            vault.executeAction(recipient, spend2, "");
+            assertEq(vault.dailySpent(alice), spend2);
+        } else {
+            // Same window
+            if (spend1 + spend2 > limit) {
+                vm.expectRevert("TxLensPolicyVault: exceeds daily spend limit");
+                vault.executeAction(recipient, spend2, "");
+            } else {
+                vault.executeAction(recipient, spend2, "");
+                assertEq(vault.dailySpent(alice), spend1 + spend2);
+            }
+        }
+        vm.stopPrank();
     }
 }

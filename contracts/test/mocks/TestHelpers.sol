@@ -59,3 +59,29 @@ contract SimpleCounterTarget {
         count += 1;
     }
 }
+
+contract ReentrantExecuteAttacker {
+    TxLensPolicyVault public immutable vault;
+    bool public reentrancyReverted;
+
+    constructor(TxLensPolicyVault _vault) {
+        vault = _vault;
+    }
+
+    function deposit() external payable {
+        vault.deposit{value: msg.value}();
+        vault.setPolicy(0, 0, false, false);
+    }
+
+    function attack() external payable {
+        vault.executeAction(address(this), 0.1 ether, "");
+    }
+
+    receive() external payable {
+        try vault.executeAction(address(this), 0.1 ether, "") {
+            reentrancyReverted = false;
+        } catch {
+            reentrancyReverted = true;
+        }
+    }
+}

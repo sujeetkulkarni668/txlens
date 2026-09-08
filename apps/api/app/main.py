@@ -20,6 +20,7 @@ from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.health import check_database, check_redis
 from app.core.rate_limit import limiter
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import get_db
 
 settings = get_settings()
@@ -45,6 +46,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 register_exception_handlers(app)
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
