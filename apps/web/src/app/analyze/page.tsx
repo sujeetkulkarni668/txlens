@@ -226,8 +226,9 @@ export default function AnalyzePage() {
           onClick={() => setShowPopupModal(true)}
           className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary font-semibold shadow-sm"
         >
-          🛡️ Preview MetaMask Pop-Up
+          🛡️ Pop-Up Shield Preview
         </Button>
+
       </div>
 
       {/* Interactive Pop-up Simulator Modal */}

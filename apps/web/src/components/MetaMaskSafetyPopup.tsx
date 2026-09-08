@@ -149,8 +149,9 @@ export function MetaMaskSafetyPopup({
             </div>
             <div>
               <h3 className="text-sm font-bold text-white tracking-tight leading-none">TxLens Shield</h3>
-              <span className="text-[10px] text-slate-400">MetaMask Pop-Up Simulator</span>
+              <span className="text-[10px] text-slate-400">Web3 Transaction Pop-Up Shield</span>
             </div>
+
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">
