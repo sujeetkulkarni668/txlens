@@ -1,4 +1,4 @@
-﻿# Environment & Secrets
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
@@ -27,9 +27,12 @@ venv/
 env/
 ENV/
 
+*.tsbuildinfo
+
 # Solidity / Foundry
 contracts/out/
 contracts/cache/
+contracts/lib/
 
 # OS / Editor
 .DS_Store

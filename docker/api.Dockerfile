@@ -19,13 +19,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY apps/api/requirements.txt apps/api/requirements.txt
-RUN pip install --no-cache-dir -r apps/api/requirements.txt
+RUN pip install --default-timeout=120 --no-cache-dir -r apps/api/requirements.txt
 
 COPY services/risk-engine/requirements.txt services/risk-engine/requirements.txt
-RUN pip install --no-cache-dir -r services/risk-engine/requirements.txt
+RUN pip install --default-timeout=120 --no-cache-dir -r services/risk-engine/requirements.txt
 
 COPY services/ai-analyst/requirements.txt services/ai-analyst/requirements.txt
-RUN pip install --no-cache-dir -r services/ai-analyst/requirements.txt
+RUN pip install --default-timeout=120 --no-cache-dir -r services/ai-analyst/requirements.txt
 
 COPY apps/api apps/api
 COPY ml ml

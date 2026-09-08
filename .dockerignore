@@ -1,0 +1,13 @@
+﻿node_modules
+.next
+out
+build
+dist
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+contracts/out
+contracts/cache

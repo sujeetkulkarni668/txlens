@@ -44,8 +44,8 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-txlens}:${POSTGRES_PASSWORD:-txlens}@postgres:5432/${POSTGRES_DB:-txlens}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
