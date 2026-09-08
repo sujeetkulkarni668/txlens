@@ -1,32 +1,4 @@
 # TxLens — Verify Before You Sign
-
-> **Phase 12 of 12 — complete.** All 12 planned phases have landed:
-> repository scaffold (1), blockchain provider + transaction parser (2),
-> simulation (3), ML risk model (4), policy engine (5), AI analyst (6),
-> MCP server (7), `TxLensPolicyVault` Solidity contract (8), Next.js
-> frontend (9), DB persistence + integration tests (10), security
-> hardening — real auth, input validation, rate limiting (11), and, this
-> phase, documentation and CI polish: an architecture diagram, CI jobs
-> for every service that lacked one, and an honest pass over every doc
-> in the repo. See [`docs/roadmap.md`](docs/roadmap.md) for the phase
-> history and [`docs/architecture.md`](docs/architecture.md) for the
-> system diagram and a verification-status table.
->
-> **"Complete" describes scope, not verification depth — read this
-> carefully before assuming anything works.**
-> What's genuinely proven: **162 executed, passing Python tests** via `pytest`
-> (unit tests across parsing, blockchain I/O, simulation, ML risk, policy,
-> AI-analyst logic, MCP tools, and stdlib-only auth — plus 3 end-to-end
-> pipeline integration tests), frontend dependency lockfile (`package-lock.json`),
-> clean `npm ci`, clean `npm run lint`, clean `npm run typecheck`, and a successful
-> `next build` production build, as well as `docker compose config` validation.
-> What's unverified / blocked in this environment: PostgreSQL live database migration,
-> Docker container runtime build/connectivity (Docker daemon inactive), Foundry Solidity
-> compilation and tests (`forge` not installed), real Anthropic provider calls (no API keys),
-> and live browser/wallet E2E testing. The smart contracts have NOT undergone an independent
-> security audit. The [Limitations](#15-limitations-current) section below is exhaustive —
-> read it, not just this banner, before relying on any specific piece.
-
 ## 1. What TxLens is
 
 TxLens is a pre-transaction blockchain security and intelligence platform.
