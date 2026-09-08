@@ -24,24 +24,37 @@ export function WalletConnectButton() {
     try {
       const connected = await connectWallet();
       setAddress(connected);
-    } catch (err) {
-      setError(err instanceof NoWalletFoundError ? "No wallet extension found." : "Connection failed.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Connection failed.");
     } finally {
       setConnecting(false);
     }
   };
 
+  const handleDisconnect = () => {
+    setAddress(null);
+    setError(null);
+  };
+
   if (address) {
     return (
-      <span className="inline-flex items-center rounded-md border border-border bg-surface-muted px-3 py-1.5 text-sm font-medium text-ink">
-        {shortAddress(address)}
-      </span>
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-flex items-center rounded-md border border-border bg-surface-muted px-3 py-1.5 text-sm font-medium font-mono text-ink"
+          title={address}
+        >
+          {shortAddress(address)}
+        </span>
+        <Button variant="secondary" size="sm" onClick={handleDisconnect}>
+          Disconnect
+        </Button>
+      </div>
     );
   }
 
   return (
     <div className="flex items-center gap-2">
-      {error && <span className="text-xs text-danger">{error}</span>}
+      {error && <span className="max-w-[200px] truncate text-xs text-danger" title={error}>{error}</span>}
       <Button variant="primary" onClick={handleConnect} disabled={connecting}>
         {connecting ? "Connecting…" : "Connect Wallet"}
       </Button>

@@ -22,10 +22,11 @@ interface AnalyzedTxPayload {
   data: string | null;
 }
 
-const EMPTY_FORM = { chain: "base-sepolia", to: "", value: "0", data: "" };
+const EMPTY_FORM = { chain: "base-sepolia", from: "", to: "", value: "0", data: "" };
 
 export default function AnalyzePage() {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TransactionAnalyzeResponse | null>(null);
@@ -34,11 +35,23 @@ export default function AnalyzePage() {
   const [isStale, setIsStale] = useState(false);
 
   useEffect(() => {
-    const unsubAccounts = onAccountsChanged(() => {
+    getConnectedAddress().then((addr) => {
+      setConnectedAddress(addr);
+      if (addr) {
+        setForm((prev) => (prev.from ? prev : { ...prev, from: addr }));
+      }
+    }).catch(() => {});
+
+    const unsubAccounts = onAccountsChanged((accounts) => {
+      const newAddr = accounts[0] ?? null;
+      setConnectedAddress(newAddr);
+      if (newAddr) {
+        setForm((prev) => ({ ...prev, from: newAddr }));
+      }
       setResult(null);
       setAnalyzedTx(null);
       setIsStale(false);
-      setSignStatus("Account changed. Please re-analyze.");
+      setSignStatus(newAddr ? "Account changed. Please re-analyze." : null);
     });
     const unsubChain = onChainChanged(() => {
       setResult(null);
@@ -57,10 +70,21 @@ export default function AnalyzePage() {
     if (analyzedTx) {
       const changed =
         updated.chain !== analyzedTx.chain ||
+        (updated.from.trim().toLowerCase()) !== analyzedTx.from.toLowerCase() ||
         (updated.to || null) !== analyzedTx.to ||
         (updated.value || "0") !== analyzedTx.value ||
         (updated.data || null) !== analyzedTx.data;
       setIsStale(changed);
+    }
+  };
+
+  const handleUseConnected = async () => {
+    try {
+      const addr = (await getConnectedAddress()) ?? (await connectWallet());
+      setConnectedAddress(addr);
+      setForm((prev) => ({ ...prev, from: addr }));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to connect wallet.");
     }
   };
 
@@ -73,20 +97,33 @@ export default function AnalyzePage() {
     setSignStatus(null);
     setLoading(true);
     try {
-      const from = (await getConnectedAddress()) ?? (await connectWallet());
+      let from = form.from.trim();
+      if (!from) {
+        from = (await getConnectedAddress()) ?? (await connectWallet());
+        setForm((prev) => ({ ...prev, from }));
+      }
+      if (!from) {
+        throw new Error("Please specify a 'From' address or connect your wallet.");
+      }
       const txPayload: AnalyzedTxPayload = {
         chain: form.chain,
         from,
-        to: form.to || null,
+        to: form.to ? form.to.trim() : null,
         value: form.value || "0",
-        data: form.data || null,
+        data: form.data ? form.data.trim() : null,
       };
       const analysis = await analyzeTransaction(txPayload);
       setResult(analysis);
       setAnalyzedTx(txPayload);
       setIsStale(false);
-    } catch (err) {
-      setError(err instanceof TxLensApiError ? err.message : "Analysis failed. Is the backend running?");
+    } catch (err: unknown) {
+      setError(
+        err instanceof TxLensApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Analysis failed. Please check backend status."
+      );
     } finally {
       setLoading(false);
     }
@@ -98,14 +135,14 @@ export default function AnalyzePage() {
       return;
     }
     if (isStale) {
-      setSignStatus("Error: Form has changed since analysis. Please re-analyze before signing.");
+      setSignStatus("Error: Form inputs have changed since analysis. Please re-analyze before signing.");
       return;
     }
     setSignStatus(null);
     try {
       const currentFrom = (await getConnectedAddress()) ?? (await connectWallet());
       if (currentFrom.toLowerCase() !== analyzedTx.from.toLowerCase()) {
-        setSignStatus("Connected wallet address changed. Please re-analyze.");
+        setSignStatus(`Connected wallet (${currentFrom.slice(0, 6)}…${currentFrom.slice(-4)}) does not match analyzed 'From' address (${analyzedTx.from.slice(0, 6)}…${analyzedTx.from.slice(-4)}). Please switch account or re-analyze.`);
         return;
       }
       // Exact analyzed transaction is sent to wallet, preventing TOCTOU substitution
@@ -115,8 +152,8 @@ export default function AnalyzePage() {
         value: analyzedTx.value,
         data: analyzedTx.data || undefined,
       });
-      setSignStatus(`Submitted: ${hash}`);
-    } catch (err) {
+      setSignStatus(`Transaction submitted to network! Hash: ${hash}`);
+    } catch (err: unknown) {
       setSignStatus(err instanceof Error ? `Signing failed: ${err.message}` : "Signing failed.");
     }
   };
@@ -141,10 +178,39 @@ export default function AnalyzePage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-ink-muted">To</span>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-ink-muted">From (Sender Address)</span>
+              {connectedAddress ? (
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, from: connectedAddress })}
+                  className="text-xs text-ink underline hover:text-ink/80"
+                >
+                  Use connected ({connectedAddress.slice(0, 6)}…{connectedAddress.slice(-4)})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleUseConnected}
+                  className="text-xs text-ink underline hover:text-ink/80"
+                >
+                  Connect wallet
+                </button>
+              )}
+            </div>
             <input
+              required
               className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
               placeholder="0x…"
+              value={form.from}
+              onChange={(e) => handleFormChange({ ...form, from: e.target.value })}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-ink-muted">To (Recipient / Contract)</span>
+            <input
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
+              placeholder="0x… (leave empty for contract deployment)"
               value={form.to}
               onChange={(e) => handleFormChange({ ...form, to: e.target.value })}
             />
@@ -157,8 +223,8 @@ export default function AnalyzePage() {
               onChange={(e) => handleFormChange({ ...form, value: e.target.value })}
             />
           </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-muted">Data (hex, optional)</span>
+          <label className="block text-sm md:col-span-2">
+            <span className="mb-1 block text-ink-muted">Data (hex, optional calldata)</span>
             <input
               className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
               placeholder="0x…"

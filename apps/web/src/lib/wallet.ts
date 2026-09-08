@@ -13,6 +13,8 @@ export interface EIP1193Provider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
   removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
+  isMetaMask?: boolean;
+  providers?: EIP1193Provider[];
 }
 
 declare global {
@@ -23,26 +25,42 @@ declare global {
 
 export class NoWalletFoundError extends Error {
   constructor() {
-    super("No EVM wallet extension detected in this browser.");
+    super("No EVM wallet extension detected. Please install MetaMask, Rabby, or Coinbase Wallet.");
     this.name = "NoWalletFoundError";
   }
 }
 
-function getProvider(): EIP1193Provider {
+export function getProvider(): EIP1193Provider {
   if (typeof window === "undefined" || !window.ethereum) {
     throw new NoWalletFoundError();
   }
-  return window.ethereum;
+  const eth = window.ethereum;
+  if (Array.isArray(eth.providers) && eth.providers.length > 0) {
+    const metaMask = eth.providers.find((p) => p.isMetaMask);
+    return metaMask ?? eth.providers[0];
+  }
+  return eth;
 }
 
 /** Prompts the wallet's connect UI; returns the first connected address. */
 export async function connectWallet(): Promise<string> {
   const provider = getProvider();
-  const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-  if (!accounts || accounts.length === 0) {
-    throw new Error("Wallet returned no accounts.");
+  try {
+    const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+    if (!accounts || accounts.length === 0) {
+      throw new Error("Wallet returned no accounts.");
+    }
+    return accounts[0];
+  } catch (err: unknown) {
+    const errorObj = err as { code?: number; message?: string };
+    if (errorObj?.code === 4001) {
+      throw new Error("Connection rejected by user in wallet.");
+    }
+    if (errorObj?.code === -32002) {
+      throw new Error("Connection request already pending. Please open your wallet extension to approve.");
+    }
+    throw new Error(errorObj?.message ?? "Failed to connect wallet.");
   }
-  return accounts[0];
 }
 
 /** Returns the currently connected address without prompting, or null. */

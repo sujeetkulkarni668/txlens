@@ -52,8 +52,37 @@ export function clearAuthToken(): void {
   setAuthToken(null);
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAuthToken();
+let authInitPromise: Promise<string> | null = null;
+
+export async function ensureAuthToken(): Promise<string> {
+  const existing = getAuthToken();
+  if (existing) return existing;
+  if (authInitPromise) return authInitPromise;
+
+  authInitPromise = (async () => {
+    try {
+      const guestId = Math.random().toString(36).substring(2, 10);
+      const email = `guest-${guestId}@txlens.local`;
+      const password = `TxLensPass-${guestId}!123`;
+      await register({ email, password });
+      const res = await login({ email, password });
+      setAuthToken(res.access_token);
+      return res.access_token;
+    } catch {
+      return "";
+    } finally {
+      authInitPromise = null;
+    }
+  })();
+
+  return authInitPromise;
+}
+
+async function request<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
+  let token = getAuthToken();
+  if (!token && !path.startsWith("/auth/")) {
+    token = await ensureAuthToken();
+  }
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -63,6 +92,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+
+  if (response.status === 401 && !isRetry && !path.startsWith("/auth/")) {
+    clearAuthToken();
+    const freshToken = await ensureAuthToken();
+    if (freshToken) {
+      return request<T>(path, init, true);
+    }
+  }
 
   if (!response.ok) {
     let detail = response.statusText;

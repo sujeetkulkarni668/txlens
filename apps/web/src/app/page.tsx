@@ -15,20 +15,25 @@ export default function DashboardPage() {
   const [policies, setPolicies] = useState<Policy[] | null>(null);
   const [policiesError, setPoliciesError] = useState<string | null>(null);
 
+  const [lookupAddress, setLookupAddress] = useState("");
+
   useEffect(() => {
     getConnectedAddress().then(setAddress).catch(() => {});
     return onAccountsChanged((accounts) => setAddress(accounts[0] ?? null));
   }, []);
 
   useEffect(() => {
-    if (!address) {
+    const target = address || (lookupAddress.trim().startsWith("0x") && lookupAddress.trim().length === 42 ? lookupAddress.trim() : null);
+    if (!target) {
       setWallet(null);
+      setWalletError(null);
       return;
     }
-    getWallet(address)
+    setWalletError(null);
+    getWallet(target)
       .then(setWallet)
       .catch((err) => setWalletError(err instanceof TxLensApiError ? err.message : "Could not load wallet"));
-  }, [address]);
+  }, [address, lookupAddress]);
 
   useEffect(() => {
     listPolicies()
@@ -47,19 +52,39 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
-          <CardHeader title="Wallet" />
+          <CardHeader title="Wallet" subtitle={address ? "Connected wallet details" : "Connect or inspect a public address"} />
           {!address && (
-            <p className="text-sm text-ink-muted">Connect a wallet to see balance and activity.</p>
+            <div className="space-y-3">
+              <p className="text-sm text-ink-muted">Connect your browser wallet or enter any EVM address to inspect:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="0x…"
+                  className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-sm text-ink"
+                  value={lookupAddress}
+                  onChange={(e) => setLookupAddress(e.target.value)}
+                />
+                <Link href={lookupAddress.startsWith("0x") ? `/wallet/${lookupAddress}` : "#"}>
+                  <Button variant="secondary" size="sm" disabled={!lookupAddress.startsWith("0x")}>
+                    View
+                  </Button>
+                </Link>
+              </div>
+            </div>
           )}
-          {address && !wallet && !walletError && (
-            <p className="text-sm text-ink-muted">Loading…</p>
+          {(address || lookupAddress) && !wallet && !walletError && (
+            <p className="text-sm text-ink-muted">Loading on-chain data…</p>
           )}
-          {walletError && <p className="text-sm text-danger">{walletError}</p>}
+          {walletError && <p className="mt-2 text-sm text-danger">{walletError}</p>}
           {wallet && (
-            <dl className="space-y-2 text-sm">
+            <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Address</dt>
-                <dd className="font-mono text-ink">{wallet.address}</dd>
+                <dd className="font-mono text-ink">
+                  <Link href={`/wallet/${wallet.address}`} className="underline hover:text-ink/80">
+                    {wallet.address.slice(0, 8)}…{wallet.address.slice(-6)}
+                  </Link>
+                </dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Chain</dt>
@@ -67,7 +92,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Balance</dt>
-                <dd className="text-ink">{wallet.balance_wei} wei</dd>
+                <dd className="font-mono text-ink">{wallet.balance_wei} wei</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Transaction count</dt>
