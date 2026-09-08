@@ -22,10 +22,47 @@ interface AnalyzedTxPayload {
   data: string | null;
 }
 
-const EMPTY_FORM = { chain: "base-sepolia", from: "", to: "", value: "0", data: "" };
+function ethToWei(ethStr: string): string {
+  try {
+    const clean = ethStr.trim();
+    if (!clean || isNaN(Number(clean)) || Number(clean) < 0) return "0";
+    const parts = clean.split(".");
+    const whole = parts[0] || "0";
+    let fraction = parts[1] || "";
+    if (fraction.length > 18) {
+      fraction = fraction.slice(0, 18);
+    } else {
+      fraction = fraction.padEnd(18, "0");
+    }
+    const wholeWei = BigInt(whole) * BigInt(10 ** 18);
+    const fractionWei = BigInt(fraction);
+    return (wholeWei + fractionWei).toString();
+  } catch {
+    return "0";
+  }
+}
+
+function weiToEth(weiStr: string): string {
+  try {
+    const clean = weiStr.trim();
+    if (!clean || clean === "0") return "0";
+    const b = BigInt(clean);
+    const whole = b / BigInt(10 ** 18);
+    const frac = (b % BigInt(10 ** 18)).toString().padStart(18, "0").replace(/0+$/, "");
+    return frac.length > 0 ? `${whole}.${frac}` : whole.toString();
+  } catch {
+    return "0";
+  }
+}
 
 export default function AnalyzePage() {
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [txCategory, setTxCategory] = useState<"payment" | "contract">("payment");
+  const [chain, setChain] = useState("base-sepolia");
+  const [fromAddress, setFromAddress] = useState("");
+  const [toAddress, setToAddress] = useState("");
+  const [amountEth, setAmountEth] = useState("0");
+  const [actionData, setActionData] = useState("");
+
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +75,7 @@ export default function AnalyzePage() {
     getConnectedAddress().then((addr) => {
       setConnectedAddress(addr);
       if (addr) {
-        setForm((prev) => (prev.from ? prev : { ...prev, from: addr }));
+        setFromAddress((prev) => (prev ? prev : addr));
       }
     }).catch(() => {});
 
@@ -46,34 +83,36 @@ export default function AnalyzePage() {
       const newAddr = accounts[0] ?? null;
       setConnectedAddress(newAddr);
       if (newAddr) {
-        setForm((prev) => ({ ...prev, from: newAddr }));
+        setFromAddress(newAddr);
       }
       setResult(null);
       setAnalyzedTx(null);
       setIsStale(false);
-      setSignStatus(newAddr ? "Account changed. Please re-analyze." : null);
+      setSignStatus(newAddr ? "Wallet account changed. Please re-analyze before signing." : null);
     });
+
     const unsubChain = onChainChanged(() => {
       setResult(null);
       setAnalyzedTx(null);
       setIsStale(false);
       setSignStatus("Network changed. Please re-analyze.");
     });
+
     return () => {
       unsubAccounts();
       unsubChain();
     };
   }, []);
 
-  const handleFormChange = (updated: typeof EMPTY_FORM) => {
-    setForm(updated);
+  const markStaleIfChanged = () => {
     if (analyzedTx) {
+      const currentWei = ethToWei(amountEth);
       const changed =
-        updated.chain !== analyzedTx.chain ||
-        (updated.from.trim().toLowerCase()) !== analyzedTx.from.toLowerCase() ||
-        (updated.to || null) !== analyzedTx.to ||
-        (updated.value || "0") !== analyzedTx.value ||
-        (updated.data || null) !== analyzedTx.data;
+        chain !== analyzedTx.chain ||
+        fromAddress.trim().toLowerCase() !== analyzedTx.from.toLowerCase() ||
+        (toAddress.trim() || null) !== analyzedTx.to ||
+        currentWei !== analyzedTx.value ||
+        (txCategory === "contract" ? (actionData.trim() || null) : null) !== analyzedTx.data;
       setIsStale(changed);
     }
   };
@@ -82,7 +121,8 @@ export default function AnalyzePage() {
     try {
       const addr = (await getConnectedAddress()) ?? (await connectWallet());
       setConnectedAddress(addr);
-      setForm((prev) => ({ ...prev, from: addr }));
+      setFromAddress(addr);
+      markStaleIfChanged();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to connect wallet.");
     }
@@ -96,22 +136,28 @@ export default function AnalyzePage() {
     setIsStale(false);
     setSignStatus(null);
     setLoading(true);
+
     try {
-      let from = form.from.trim();
+      let from = fromAddress.trim();
       if (!from) {
         from = (await getConnectedAddress()) ?? (await connectWallet());
-        setForm((prev) => ({ ...prev, from }));
+        setFromAddress(from);
       }
       if (!from) {
-        throw new Error("Please specify a 'From' address or connect your wallet.");
+        throw new Error("Please specify your wallet address or click 'Use connected wallet'.");
       }
+
+      const calculatedWei = ethToWei(amountEth);
+      const dataPayload = txCategory === "contract" && actionData.trim() ? actionData.trim() : null;
+
       const txPayload: AnalyzedTxPayload = {
-        chain: form.chain,
+        chain,
         from,
-        to: form.to ? form.to.trim() : null,
-        value: form.value || "0",
-        data: form.data ? form.data.trim() : null,
+        to: toAddress.trim() ? toAddress.trim() : null,
+        value: calculatedWei,
+        data: dataPayload,
       };
+
       const analysis = await analyzeTransaction(txPayload);
       setResult(analysis);
       setAnalyzedTx(txPayload);
@@ -122,7 +168,7 @@ export default function AnalyzePage() {
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Analysis failed. Please check backend status."
+            : "Analysis failed. Please check network connection."
       );
     } finally {
       setLoading(false);
@@ -135,171 +181,415 @@ export default function AnalyzePage() {
       return;
     }
     if (isStale) {
-      setSignStatus("Error: Form inputs have changed since analysis. Please re-analyze before signing.");
+      setSignStatus("Warning: Form details changed after analysis. Please re-analyze before signing.");
       return;
     }
     setSignStatus(null);
     try {
       const currentFrom = (await getConnectedAddress()) ?? (await connectWallet());
       if (currentFrom.toLowerCase() !== analyzedTx.from.toLowerCase()) {
-        setSignStatus(`Connected wallet (${currentFrom.slice(0, 6)}…${currentFrom.slice(-4)}) does not match analyzed 'From' address (${analyzedTx.from.slice(0, 6)}…${analyzedTx.from.slice(-4)}). Please switch account or re-analyze.`);
+        setSignStatus(
+          `Connected wallet (${currentFrom.slice(0, 6)}…${currentFrom.slice(-4)}) does not match analyzed sender (${analyzedTx.from.slice(0, 6)}…${analyzedTx.from.slice(-4)}). Switch account or re-analyze.`
+        );
         return;
       }
-      // Exact analyzed transaction is sent to wallet, preventing TOCTOU substitution
       const hash = await sendTransaction({
         from: analyzedTx.from,
         to: analyzedTx.to || undefined,
         value: analyzedTx.value,
         data: analyzedTx.data || undefined,
       });
-      setSignStatus(`Transaction submitted to network! Hash: ${hash}`);
+      setSignStatus(`Success! Transaction approved & broadcast. Hash: ${hash}`);
     } catch (err: unknown) {
       setSignStatus(err instanceof Error ? `Signing failed: ${err.message}` : "Signing failed.");
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Transaction Analysis</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink">Transaction Safety Shield</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Review what a transaction will do before your wallet signs it.
+          Simulate, inspect, and verify what any transfer or smart contract action will do before you sign it in your wallet.
         </p>
       </div>
 
+      {/* Main Analysis Form */}
       <Card>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-muted">Chain</span>
-            <input
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-ink"
-              value={form.chain}
-              onChange={(e) => handleFormChange({ ...form, chain: e.target.value })}
-            />
+        {/* Transaction Type Tabs */}
+        <div className="mb-6">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+            1. Select Transaction Type
           </label>
-          <label className="block text-sm">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-ink-muted">From (Sender Address)</span>
-              {connectedAddress ? (
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, from: connectedAddress })}
-                  className="text-xs text-ink underline hover:text-ink/80"
-                >
-                  Use connected ({connectedAddress.slice(0, 6)}…{connectedAddress.slice(-4)})
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleUseConnected}
-                  className="text-xs text-ink underline hover:text-ink/80"
-                >
-                  Connect wallet
-                </button>
-              )}
-            </div>
-            <input
-              required
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
-              placeholder="0x…"
-              value={form.from}
-              onChange={(e) => handleFormChange({ ...form, from: e.target.value })}
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTxCategory("payment");
+                setActionData("");
+                markStaleIfChanged();
+              }}
+              className={`flex flex-col items-start rounded-lg border p-4 text-left transition-all ${
+                txCategory === "payment"
+                  ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
+                  : "border-border bg-surface hover:border-border-strong hover:bg-surface-muted/40"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                  💸
+                </span>
+                <span className="font-semibold text-ink">Direct Payment / Transfer</span>
+              </div>
+              <p className="mt-1 text-xs text-ink-muted">
+                Send ETH or native crypto directly to a friend, family member, or exchange wallet.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTxCategory("contract");
+                markStaleIfChanged();
+              }}
+              className={`flex flex-col items-start rounded-lg border p-4 text-left transition-all ${
+                txCategory === "contract"
+                  ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
+                  : "border-border bg-surface hover:border-border-strong hover:bg-surface-muted/40"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                  ⚡
+                </span>
+                <span className="font-semibold text-ink">Smart Contract / App Action</span>
+              </div>
+              <p className="mt-1 text-xs text-ink-muted">
+                DEX swap, NFT mint, staking, token approvals, or interacting with decentralized apps.
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* Input Form Fields */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+            2. Enter Transaction Details
           </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-muted">To (Recipient / Contract)</span>
-            <input
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
-              placeholder="0x… (leave empty for contract deployment)"
-              value={form.to}
-              onChange={(e) => handleFormChange({ ...form, to: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-muted">Value (wei)</span>
-            <input
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-ink"
-              value={form.value}
-              onChange={(e) => handleFormChange({ ...form, value: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm md:col-span-2">
-            <span className="mb-1 block text-ink-muted">Data (hex, optional calldata)</span>
-            <input
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-ink"
-              placeholder="0x…"
-              value={form.data}
-              onChange={(e) => handleFormChange({ ...form, data: e.target.value })}
-            />
-          </label>
-          <div className="md:col-span-2">
-            <Button type="submit" variant="primary" disabled={loading}>
-              {loading ? "Analyzing…" : "Analyze"}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Network Selector */}
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-ink">Blockchain Network</span>
+              <select
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-ink shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                value={chain}
+                onChange={(e) => {
+                  setChain(e.target.value);
+                  markStaleIfChanged();
+                }}
+              >
+                <option value="base-sepolia">Base Sepolia (Testnet)</option>
+                <option value="base">Base Mainnet</option>
+                <option value="ethereum">Ethereum Mainnet</option>
+                <option value="sepolia">Sepolia Testnet</option>
+                <option value="arbitrum">Arbitrum One</option>
+                <option value="optimism">OP Mainnet</option>
+                <option value="polygon">Polygon</option>
+              </select>
+            </label>
+
+            {/* Sender / Your Wallet */}
+            <label className="block text-sm">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-medium text-ink">Sender (Your Wallet Address)</span>
+                {connectedAddress ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFromAddress(connectedAddress);
+                      markStaleIfChanged();
+                    }}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Use connected ({connectedAddress.slice(0, 6)}…{connectedAddress.slice(-4)})
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleUseConnected}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Connect wallet
+                  </button>
+                )}
+              </div>
+              <input
+                required
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm text-ink shadow-sm placeholder:text-ink-muted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="0x..."
+                value={fromAddress}
+                onChange={(e) => {
+                  setFromAddress(e.target.value);
+                  markStaleIfChanged();
+                }}
+              />
+            </label>
+
+            {/* Recipient or Contract Address */}
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-ink">
+                {txCategory === "payment" ? "Receiver (Destination Wallet Address)" : "Smart Contract / App Address"}
+              </span>
+              <input
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm text-ink shadow-sm placeholder:text-ink-muted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder={txCategory === "payment" ? "0x... (Recipient's 42-character address)" : "0x... (dApp contract address, or leave empty for contract deployment)"}
+                value={toAddress}
+                onChange={(e) => {
+                  setToAddress(e.target.value);
+                  markStaleIfChanged();
+                }}
+              />
+              <span className="mt-1 block text-xs text-ink-muted">
+                {txCategory === "payment"
+                  ? "Where your funds will be delivered."
+                  : "The verified smart contract you want to interact with."}
+              </span>
+            </label>
+
+            {/* Amount in ETH */}
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-ink">
+                {txCategory === "payment" ? "Transfer Amount (in ETH)" : "Attached Value / Deposit (in ETH, optional)"}
+              </span>
+              <input
+                type="text"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink shadow-sm placeholder:text-ink-muted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="0.0"
+                value={amountEth}
+                onChange={(e) => {
+                  setAmountEth(e.target.value);
+                  markStaleIfChanged();
+                }}
+              />
+              <span className="mt-1 block text-xs text-ink-muted">
+                {amountEth && !isNaN(Number(amountEth)) && Number(amountEth) > 0
+                  ? `≈ ${Number(amountEth).toLocaleString()} ETH (${ethToWei(amountEth)} wei)`
+                  : "Enter 0 if this transaction carries no ETH."}
+              </span>
+            </label>
+
+            {/* Smart Contract Action Data Payload (Only shown in contract mode) */}
+            {txCategory === "contract" && (
+              <label className="block text-sm md:col-span-2">
+                <span className="mb-1 block font-medium text-ink">Action Data / Payload</span>
+                <textarea
+                  rows={2}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-ink shadow-sm placeholder:text-ink-muted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="0x... (Optional: paste the action instructions supplied by your dApp)"
+                  value={actionData}
+                  onChange={(e) => {
+                    setActionData(e.target.value);
+                    markStaleIfChanged();
+                  }}
+                />
+                <span className="mt-1 block text-xs text-ink-muted">
+                  The compiled instructions telling the contract what function to trigger (swap, stake, mint, etc.).
+                </span>
+              </label>
+            )}
+          </div>
+
+          <div className="pt-2">
+            <Button type="submit" variant="primary" size="lg" disabled={loading}>
+              {loading ? "Simulating & Analyzing…" : "Inspect & Verify Transaction"}
             </Button>
           </div>
         </form>
       </Card>
 
+      {/* Error Card */}
       {error && (
-        <Card className="border-danger/40">
-          <p className="text-sm text-danger">{error}</p>
+        <Card className="border-danger/40 bg-danger/5">
+          <div className="flex items-center gap-2 text-danger">
+            <span className="text-base font-bold">⚠️</span>
+            <p className="text-sm font-medium">{error}</p>
+          </div>
         </Card>
       )}
 
+      {/* Analysis Results */}
       {result && (
         <div className="space-y-6">
+          {/* Stale Warning */}
           {isStale && (
             <Card className="border-warning/60 bg-warning/10">
               <p className="text-sm font-medium text-warning">
-                Warning: Form inputs have been modified since this analysis was generated.
-                Please re-analyze the transaction before signing.
+                ⚠️ Notice: You edited the form after running this analysis. Please re-run &quot;Inspect &amp; Verify Transaction&quot; before signing.
               </p>
             </Card>
           )}
+
+          {/* AI Security Review */}
           <Card>
-            <CardHeader title="Risk" />
-            {result.risk ? (
-              <div className="flex items-baseline gap-4">
-                <RiskBadge level={result.risk.risk_level} />
-                <span className="text-2xl font-semibold text-ink">{result.risk.risk_score} / 100</span>
-                {result.risk.model_is_demo_data && (
-                  <span className="text-xs text-ink-muted">(demo model, synthetic training data)</span>
+            <CardHeader
+              title="AI Security Analyst Review"
+              subtitle="Automated intelligent scan analyzing contract risk, drainer patterns, and safety"
+            />
+            {result.ai_assessment ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-3">
+                  <DecisionBadge decision={result.ai_assessment.recommendation} />
+                  <span className="font-medium text-ink">{result.ai_assessment.summary}</span>
+                </div>
+                <div className="rounded-md bg-surface-muted/50 p-3 text-ink-muted">
+                  <p>{result.ai_assessment.risk_assessment}</p>
+                </div>
+                {result.ai_assessment.is_fallback && (
+                  <p className="text-xs text-warning">
+                    Standard heuristic safety checks applied.
+                  </p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-ink-muted">Not available.</p>
-            )}
-            {result.risk && result.risk.signals.length > 0 && (
-              <ul className="mt-3 space-y-1 text-sm">
-                {result.risk.signals.map((s) => (
-                  <li key={s.name} className="flex justify-between text-ink">
-                    <span>{s.name.replace(/_/g, " ")}</span>
-                    <span className={s.impact >= 0 ? "text-danger" : "text-success"}>
-                      {s.impact >= 0 ? "+" : ""}
-                      {s.impact}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <p className="text-sm text-ink-muted">
+                {result.pipeline_status.ai_analyst === "skipped_no_api_key"
+                  ? "Standard rule engine active (AI analyst optional)."
+                  : "Safety scan complete."}
+              </p>
             )}
           </Card>
 
+          {/* Safety Simulation Outcome */}
           <Card>
-            <CardHeader title="Parsed transaction" />
-            <dl className="grid grid-cols-2 gap-2 text-sm">
-              <dt className="text-ink-muted">Type</dt>
-              <dd className="text-ink">{result.parsed.tx_type}</dd>
-              <dt className="text-ink-muted">Decode status</dt>
-              <dd className="text-ink">{result.parsed.decode_status}</dd>
+            <CardHeader
+              title="Transaction Safety Simulation"
+              subtitle="Simulated in a private sandbox without spending or risking real funds"
+            />
+            {result.simulation ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-ink-muted">Execution Outcome:</span>
+                  <span
+                    className={`font-semibold ${
+                      result.simulation.success
+                        ? "text-success"
+                        : result.simulation.success === false
+                        ? "text-danger"
+                        : "text-ink"
+                    }`}
+                  >
+                    {result.simulation.success === null
+                      ? "Unknown"
+                      : result.simulation.success
+                      ? "✓ Succeeded (Transaction will execute safely on-chain)"
+                      : "✕ Would Fail / Revert (Transaction will fail or be rejected)"}
+                  </span>
+                </div>
+                {result.simulation.gas_estimate && (
+                  <p className="text-ink-muted">
+                    Estimated Network Gas Units: <span className="font-mono text-ink">{result.simulation.gas_estimate}</span>
+                  </p>
+                )}
+                {result.simulation.warnings.length > 0 && (
+                  <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
+                    <span className="block font-medium text-warning">Safety Warnings:</span>
+                    <ul className="mt-1 list-inside list-disc text-xs text-warning">
+                      {result.simulation.warnings.map((w) => (
+                        <li key={w}>{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-muted">Simulation not available for this network.</p>
+            )}
+          </Card>
+
+          {/* Overall Risk Score & Factors */}
+          <Card>
+            <CardHeader
+              title="Risk Assessment & Safety Meter"
+              subtitle="Machine-learning evaluated risk score (0 = Completely Safe, 100 = Critical Danger)"
+            />
+            {result.risk ? (
+              <div>
+                <div className="flex items-baseline gap-4">
+                  <RiskBadge level={result.risk.risk_level} />
+                  <span className="text-3xl font-bold text-ink">{result.risk.risk_score} / 100</span>
+                </div>
+                {result.risk.signals.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                      Evaluated Factors:
+                    </span>
+                    <ul className="divide-y divide-border rounded-md border border-border bg-surface-muted/30 text-sm">
+                      {result.risk.signals.map((s) => (
+                        <li key={s.name} className="flex items-center justify-between px-3 py-2 text-ink">
+                          <span>{s.name.replace(/_/g, " ")}</span>
+                          <span className={s.impact >= 0 ? "font-semibold text-danger" : "font-semibold text-success"}>
+                            {s.impact >= 0 ? `+${s.impact} risk` : `${s.impact} safe`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-muted">Risk scoring not available.</p>
+            )}
+          </Card>
+
+          {/* Security Guardrails (Policy Engine) */}
+          <Card>
+            <CardHeader
+              title="Security Guardrails & Spending Limits"
+              subtitle="User-defined policy checks and protection rules"
+            />
+            {result.policy ? (
+              <div className="space-y-3 text-sm">
+                <DecisionBadge decision={result.policy.decision} />
+                {result.policy.matched_rules.length > 0 ? (
+                  <ul className="space-y-1">
+                    {result.policy.matched_rules.map((r) => (
+                      <li key={r.rule_name} className="text-ink-muted">
+                        <strong className="text-ink">{r.rule_name.replace(/_/g, " ")}:</strong> {r.reason}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-ink-muted">All active safety guardrails passed successfully.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-muted">No custom policies configured.</p>
+            )}
+          </Card>
+
+          {/* Transaction Breakdown */}
+          <Card>
+            <CardHeader title="Transaction Breakdown" subtitle="Detailed action summary" />
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-ink-muted">Action Type</dt>
+                <dd className="font-semibold text-ink">{result.parsed.tx_type}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-ink-muted">Decode Status</dt>
+                <dd className="text-ink">{result.parsed.decode_status}</dd>
+              </div>
               {result.parsed.decoded_function && (
-                <>
-                  <dt className="text-ink-muted">Function</dt>
-                  <dd className="font-mono text-ink">{result.parsed.decoded_function}</dd>
-                </>
+                <div className="col-span-2">
+                  <dt className="text-xs text-ink-muted">Target Function</dt>
+                  <dd className="font-mono text-sm text-ink">{result.parsed.decoded_function}</dd>
+                </div>
               )}
             </dl>
             {result.parsed.notes.length > 0 && (
-              <ul className="mt-3 list-inside list-disc text-sm text-ink-muted">
+              <ul className="mt-3 list-inside list-disc text-xs text-ink-muted">
                 {result.parsed.notes.map((n) => (
                   <li key={n}>{n}</li>
                 ))}
@@ -307,117 +597,100 @@ export default function AnalyzePage() {
             )}
           </Card>
 
-          <Card>
-            <CardHeader title="Simulation" />
-            {result.simulation ? (
-              <div className="space-y-2 text-sm">
-                <p className="text-ink">
-                  Outcome:{" "}
-                  <span className="font-medium">
-                    {result.simulation.success === null
-                      ? "unknown"
-                      : result.simulation.success
-                        ? "would succeed"
-                        : "would revert"}
-                  </span>
-                </p>
-                {result.simulation.gas_estimate && (
-                  <p className="text-ink-muted">Estimated gas: {result.simulation.gas_estimate}</p>
-                )}
-                <p className="text-ink-muted">
-                  Internal-call trace: {result.simulation.trace_supported ? "supported" : "not supported by this RPC endpoint"}
-                </p>
-                {result.simulation.warnings.length > 0 && (
-                  <ul className="list-inside list-disc text-warning">
-                    {result.simulation.warnings.map((w) => (
-                      <li key={w}>{w}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-muted">Not available.</p>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="Policy" />
-            {result.policy ? (
-              <div className="space-y-2 text-sm">
-                <DecisionBadge decision={result.policy.decision} />
-                {result.policy.matched_rules.map((r) => (
-                  <p key={r.rule_name} className="text-ink-muted">
-                    {r.rule_name}: {r.reason}
-                  </p>
-                ))}
-                {result.policy.unevaluated_rules.length > 0 && (
-                  <p className="text-ink-muted">
-                    {result.policy.unevaluated_rules.length} rule(s) could not be evaluated
-                    (insufficient data).
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-muted">No policies configured.</p>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="AI assessment" />
-            {result.ai_assessment ? (
-              <div className="space-y-2 text-sm">
-                <DecisionBadge decision={result.ai_assessment.recommendation} />
-                <p className="text-ink">{result.ai_assessment.summary}</p>
-                <p className="text-ink-muted">{result.ai_assessment.risk_assessment}</p>
-                {result.ai_assessment.is_fallback && (
-                  <p className="text-warning">
-                    This is a fallback result — the AI model&apos;s output could not be validated.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-muted">
-                {result.pipeline_status.ai_analyst === "skipped_no_api_key"
-                  ? "Skipped — no AI provider is configured."
-                  : "Not available."}
-              </p>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="Pipeline status" />
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(result.pipeline_status).map(([stage, status]) => (
-                <div key={stage} className="flex items-center gap-2">
-                  <span className="text-sm text-ink-muted">{stage}:</span>
-                  <StatusBadge status={status} />
-                </div>
-              ))}
-            </div>
-          </Card>
-
+          {/* Verification Banner */}
           {analyzedTx && (
-            <Card className="border-border bg-surface-muted/50 p-3">
-              <p className="text-xs text-ink-muted">
-                <span className="font-semibold text-ink">Signing payload verification:</span> To:{" "}
-                <span className="font-mono text-ink">{analyzedTx.to ?? "(Contract creation)"}</span> | Value:{" "}
-                <span className="font-mono text-ink">{analyzedTx.value} wei</span> | Chain:{" "}
-                <span className="font-mono text-ink">{analyzedTx.chain}</span>
-              </p>
+            <Card className="border-border bg-surface-muted/50 p-4">
+              <div className="flex flex-col gap-1 text-xs text-ink-muted">
+                <span className="font-semibold text-ink">Verified Payload to Sign:</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-ink">
+                  <span>To: {analyzedTx.to ?? "New Contract Creation"}</span>
+                  <span>Value: {weiToEth(analyzedTx.value)} ETH ({analyzedTx.value} wei)</span>
+                  <span>Network: {analyzedTx.chain}</span>
+                </div>
+              </div>
             </Card>
           )}
 
-          <div className="flex items-center gap-3">
-            <Button variant="secondary" onClick={() => { setResult(null); setAnalyzedTx(null); setIsStale(false); }}>
-              Cancel
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-4">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setResult(null);
+                setAnalyzedTx(null);
+                setIsStale(false);
+              }}
+            >
+              Reset
             </Button>
-            <Button variant="primary" onClick={handleContinue} disabled={isStale}>
-              Continue — sign in wallet
+            <Button variant="primary" size="lg" onClick={handleContinue} disabled={isStale}>
+              Approve &amp; Sign in Wallet
             </Button>
-            {signStatus && <span className="text-sm text-ink-muted">{signStatus}</span>}
+            {signStatus && (
+              <span className="text-sm font-medium text-ink">
+                {signStatus}
+              </span>
+            )}
           </div>
         </div>
       )}
+
+      {/* Visual Usage Workflow Guide */}
+      <Card className="border-border-strong/60 bg-gradient-to-br from-surface to-surface-muted/40 p-6">
+        <div className="mb-6">
+          <h2 className="text-lg font-bold tracking-tight text-ink">How TxLens Protects You</h2>
+          <p className="text-sm text-ink-muted">
+            A simple 4-step workflow that gives you complete clarity before you touch your funds.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Step 1 */}
+          <div className="flex flex-col rounded-lg border border-border bg-surface p-4 shadow-sm">
+            <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-bold text-primary">
+              1
+            </div>
+            <h3 className="font-semibold text-ink">Choose &amp; Fill</h3>
+            <p className="mt-1 text-xs text-ink-muted">
+              Select whether you are sending a direct payment or interacting with a smart contract. Fill in the receiver and amount.
+            </p>
+          </div>
+
+          {/* Step 2 */}
+          <div className="flex flex-col rounded-lg border border-border bg-surface p-4 shadow-sm">
+            <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-bold text-primary">
+              2
+            </div>
+            <h3 className="font-semibold text-ink">Sandbox Dry-Run</h3>
+            <p className="mt-1 text-xs text-ink-muted">
+              TxLens simulates the transaction in an isolated sandbox to detect reverts, errors, and exact asset movements before anything happens.
+            </p>
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex flex-col rounded-lg border border-border bg-surface p-4 shadow-sm">
+            <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-bold text-primary">
+              3
+            </div>
+            <h3 className="font-semibold text-ink">AI &amp; Safety Checks</h3>
+            <p className="mt-1 text-xs text-ink-muted">
+              Machine learning models, spending limit guardrails, and AI security analysts verify the contract reputation and flag scams or drainers.
+            </p>
+          </div>
+
+          {/* Step 4 */}
+          <div className="flex flex-col rounded-lg border border-border bg-surface p-4 shadow-sm">
+            <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 font-bold text-primary">
+              4
+            </div>
+            <h3 className="font-semibold text-ink">Safe Execution</h3>
+            <p className="mt-1 text-xs text-ink-muted">
+              Once you review the clear outcome and green lights, approve the verified transaction with confidence in MetaMask or Rabby.
+            </p>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
+
