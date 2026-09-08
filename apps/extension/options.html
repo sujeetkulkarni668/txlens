@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TxLens Shield — Settings & Preferences</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 16px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .header p {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .toggle-info {
+      flex: 1;
+    }
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+    .toggle-desc {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155;
+      transition: .2s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2563eb;
+    }
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .input-control {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #f8fafc;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .input-control:focus {
+      border-color: #3b82f6;
+    }
+    select.input-control {
+      cursor: pointer;
+    }
+    .status-msg {
+      font-size: 12px;
+      text-align: center;
+      min-height: 18px;
+      transition: opacity 0.2s;
+    }
+    .status-success {
+      color: #10b981;
+    }
+    .save-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .save-btn:hover {
+      opacity: 0.92;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div style="font-size: 24px;">🛡️</div>
+      <div>
+        <h1>TxLens Pop-Up Shield Settings</h1>
+        <p>Configure cross-tab detection and transaction interception preferences</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cross-Tab & dApp Overlay</div>
+      
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-label">Allow Shield over other tabs & apps</div>
+          <div class="toggle-desc">Automatically detect transaction forms on external tabs (Uniswap, OpenSea, etc.)</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="shieldEnabled" checked />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-label">Auto-Intercept Web3 Transactions</div>
+          <div class="toggle-desc">Show safety overlay pop-up before wallet signature prompt appears</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="autoIntercept" checked />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Backend Connection</div>
+
+      <div class="field-group">
+        <label for="apiUrl">TxLens API Base Endpoint</label>
+        <input type="text" id="apiUrl" class="input-control" value="http://localhost:8000/api/v1" />
+      </div>
+
+      <div class="field-group">
+        <label for="defaultChain">Default EVM Network</label>
+        <select id="defaultChain" class="input-control">
+          <option value="base-sepolia" selected>Base Sepolia (Chain ID: 84532)</option>
+          <option value="ethereum">Ethereum Mainnet (Chain ID: 1)</option>
+          <option value="base">Base Mainnet (Chain ID: 8453)</option>
+          <option value="arbitrum">Arbitrum One (Chain ID: 42161)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="statusMessage" class="status-msg"></div>
+
+    <button id="saveBtn" class="save-btn">Save Preferences</button>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

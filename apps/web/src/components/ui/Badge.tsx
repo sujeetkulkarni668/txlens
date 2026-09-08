@@ -47,3 +47,25 @@ export function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+export function Badge({
+  children,
+  variant = "info",
+}: {
+  children: React.ReactNode;
+  variant?: "info" | "success" | "warning" | "danger" | "outline";
+}) {
+  const styles: Record<string, string> = {
+    info: "bg-brand/10 text-brand border-brand/30",
+    success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+    warning: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+    danger: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+    outline: "bg-surface-muted text-ink-muted border-border",
+  };
+  return (
+    <span className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${styles[variant] || styles.outline}`}>
+      {children}
+    </span>
+  );
+}
+

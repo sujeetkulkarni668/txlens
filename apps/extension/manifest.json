@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "TxLens — Web3 Transaction Safety & Anti-Drainer Shield",
   "version": "1.0.0",
-  "description": "Auto-scrape and verify transaction authenticity before signing in MetaMask or Rabby. Instant SAFE, MID, or RISK rating with top 3 reasons.",
+  "description": "Auto-scrape and verify transaction authenticity before signing in any Web3 wallet. Instant SAFE, MID, or RISK rating with top 3 reasons across all tabs.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -18,6 +18,10 @@
     "default_popup": "popup.html",
     "default_title": "TxLens Security Shield"
   },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -25,7 +29,14 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inpage_proxy.js"],
+      "matches": ["<all_urls>"]
     }
   ]
 }
+
