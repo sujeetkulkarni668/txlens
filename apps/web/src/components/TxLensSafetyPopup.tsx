@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { analyzeTransaction, TxLensApiError } from "@/lib/api";
 import type { TransactionAnalyzeResponse } from "@txlens/shared-types";
 
-interface MetaMaskSafetyPopupProps {
+interface TxLensSafetyPopupProps {
+
   chain?: string;
   from?: string;
   to?: string | null;
@@ -77,7 +78,7 @@ function extractTop3Reasons(result: TransactionAnalyzeResponse): string[] {
   return reasons.slice(0, 3);
 }
 
-export function MetaMaskSafetyPopup({
+export function TxLensSafetyPopup({
   chain = "base-sepolia",
   from = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
   to = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -86,7 +87,8 @@ export function MetaMaskSafetyPopup({
   dappName = "Active dApp",
   isOpen = true,
   onClose,
-}: MetaMaskSafetyPopupProps) {
+}: TxLensSafetyPopupProps) {
+
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TransactionAnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);

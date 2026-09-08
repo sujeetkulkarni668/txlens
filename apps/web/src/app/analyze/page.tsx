@@ -12,7 +12,8 @@ import {
   onChainChanged,
   sendTransaction,
 } from "@/lib/wallet";
-import { MetaMaskSafetyPopup } from "@/components/MetaMaskSafetyPopup";
+import { TxLensSafetyPopup } from "@/components/TxLensSafetyPopup";
+
 import type { TransactionAnalyzeResponse } from "@txlens/shared-types";
 
 
@@ -233,7 +234,7 @@ export default function AnalyzePage() {
 
       {/* Interactive Pop-up Simulator Modal */}
       {showPopupModal && (
-        <MetaMaskSafetyPopup
+        <TxLensSafetyPopup
           chain={chain}
           from={fromAddress}
           to={toAddress}
@@ -244,6 +245,7 @@ export default function AnalyzePage() {
           onClose={() => setShowPopupModal(false)}
         />
       )}
+
 
       {/* Main Analysis Form */}
       <Card>
