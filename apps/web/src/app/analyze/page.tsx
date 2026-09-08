@@ -12,7 +12,9 @@ import {
   onChainChanged,
   sendTransaction,
 } from "@/lib/wallet";
+import { MetaMaskSafetyPopup } from "@/components/MetaMaskSafetyPopup";
 import type { TransactionAnalyzeResponse } from "@txlens/shared-types";
+
 
 interface AnalyzedTxPayload {
   chain: string;
@@ -70,6 +72,8 @@ export default function AnalyzePage() {
   const [analyzedTx, setAnalyzedTx] = useState<AnalyzedTxPayload | null>(null);
   const [signStatus, setSignStatus] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
+  const [showPopupModal, setShowPopupModal] = useState(false);
+
 
   useEffect(() => {
     getConnectedAddress().then((addr) => {
@@ -208,15 +212,41 @@ export default function AnalyzePage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Transaction Safety Shield</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Simulate, inspect, and verify what any transfer or smart contract action will do before you sign it in your wallet.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Transaction Safety Shield</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            Simulate, inspect, and verify what any transfer or smart contract action will do before you sign it in your wallet.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          size="md"
+          type="button"
+          onClick={() => setShowPopupModal(true)}
+          className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary font-semibold shadow-sm"
+        >
+          🛡️ Preview MetaMask Pop-Up
+        </Button>
       </div>
+
+      {/* Interactive Pop-up Simulator Modal */}
+      {showPopupModal && (
+        <MetaMaskSafetyPopup
+          chain={chain}
+          from={fromAddress}
+          to={toAddress}
+          valueEth={amountEth}
+          data={txCategory === "contract" ? actionData : null}
+          dappName="TxLens Web Simulator"
+          isOpen={showPopupModal}
+          onClose={() => setShowPopupModal(false)}
+        />
+      )}
 
       {/* Main Analysis Form */}
       <Card>
+
         {/* Transaction Type Tabs */}
         <div className="mb-6">
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
